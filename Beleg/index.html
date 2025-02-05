@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geschenk Katalog</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .warenkorb-seite {
+            position: fixed;
+            right: -25px;
+            top: 0;
+            width: 350px;
+            height: 100vh;
+            background: #ffffff;
+            padding: 20px;
+            border-left: 2px solid #ddd;
+            overflow-y: auto;
+            box-shadow: -3px 0 10px rgba(0, 0, 0, 0.1);
+            margin-left: 20px;
+        }
+
+        .warenkorb-seite h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        .warenkorb-seite p {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .warenkorb-seite .table {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .row {
+            margin-right: 150px;
+            row-gap: 20px;
+        }
+
+        .card {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fixed-img {
+            height: 400px;
+            width: 100%;
+        }
+
+        .card-body {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card-text {
+            min-height: 60px;
+        }
+
+        @media (max-width: 768px) {
+            .warenkorb-seite {
+                width: 100%;
+                height: auto;
+                position: relative;
+                border-left: none;
+                box-shadow: none;
+            }
+            .row {
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container mt-5">
+        <h1 class="text-center mb-4">🎁 Geschenk Katalog</h1>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <input type="text" class="form-control" v-model="searchQuery" placeholder="🔍 Nach Geschenk suchen...">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4" v-for="produkt in gefilterteProdukte" :key="produkt.ProduktID">
+                <div class="card">
+                    <img :src="produkt.Bild" class="card-img-top fixed-img" alt="Produktbild">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ produkt.Produktname }}</h5>
+                        <p class="card-text">{{ produkt.Beschreibung }}</p>
+                        <p><strong>Preis:</strong> {{ parseFloat(produkt.Preis).toFixed(2) }} €</p>
+                        <p><strong>Verfügbarkeit:</strong> {{ produkt.Anzahl }} Stück</p>
+                        <button class="btn btn-success w-100" @click="bestellen(produkt)">🛒 Bestellen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="warenkorb-seite">
+            <h2>🛍️ Warenkorb</h2>
+            <p><strong>Bestellpositionen:</strong> {{ bestellPositionen }}</p>
+            <p><strong>Gesamtanzahl Artikel:</strong> {{ gesamtAnzahl }}</p>
+            <p><strong>Gesamtpreis:</strong> {{ gesamtpreis.toFixed(2) }} €</p>
+
+            <div v-if="warenkorb.length === 0" class="alert alert-warning">Noch keine Artikel im Warenkorb.</div>
+            <table class="table" v-else>
+                <thead>
+                    <tr>
+                        <th>Produkt</th>
+                        <th>Menge</th>
+                        <th>Aktion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(artikel, index) in warenkorb" :key="artikel.ProduktID">
+                        <td>{{ artikel.Produktname }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" @click="mengeVerringern(index)">➖</button>
+                            {{ artikel.menge }}
+                            <button class="btn btn-sm btn-primary" @click="mengeErhöhen(index)">➕</button>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" @click="entfernen(index)">🗑️ Entfernen</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Bestellung abschließen Button -->
+            <div v-if="warenkorb.length > 0">
+                <button class="btn btn-success w-100 mt-3" @click="startCheckout">Bestellung abschließen</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.0/dist/vue.global.js"></script>
+    <script>
+        const app = Vue.createApp({
+            data() {
+                return {
+                    produkte: [],   
+                    searchQuery: "", 
+                    warenkorb: []    
+                };
+            },
+            computed: {
+                gefilterteProdukte() {
+                    return this.produkte.filter(produkt =>
+                        produkt.Produktname.toLowerCase().includes(this.searchQuery.toLowerCase())
+                    );
+                },
+                gesamtpreis() {
+                    return this.warenkorb.reduce((sum, artikel) => sum + (artikel.Preis * artikel.menge), 0);
+                },
+                bestellPositionen() {
+                    return this.warenkorb.length;
+                },
+                gesamtAnzahl() {
+                    return this.warenkorb.reduce((sum, artikel) => sum + artikel.menge, 0);
+                }
+            },
+            created() {
+                this.fetchProdukte();  
+            },
+            methods: {
+                async fetchProdukte() {
+                    try {
+                        const response = await fetch('dbFetch.php');
+                        const data = await response.json();
+                        this.produkte = data.map(produkt => ({
+                            ...produkt,
+                            Preis: parseFloat(produkt.Preis)
+                        }));
+                    } catch (error) {
+                        console.error("Fehler beim Laden der Produkte:", error);
+                    }
+                },
+                bestellen(produkt) {
+                    let existiert = this.warenkorb.find(artikel => artikel.ProduktID === produkt.ProduktID);
+                    if (existiert) {
+                        if (existiert.menge < produkt.Anzahl) {
+                            existiert.menge++;
+                        } else {
+                            alert(`Nicht genügend Bestand! Es gibt nur noch ${produkt.Anzahl} Stück.`);
+                        }
+                    } else {
+                        if (produkt.Anzahl > 0) {
+                            this.warenkorb.push({ ...produkt, menge: 1 });
+                        } else {
+                            alert("Dieses Produkt ist leider nicht mehr verfügbar.");
+                        }
+                    }
+                },
+                mengeErhöhen(index) {
+                    let artikel = this.warenkorb[index];
+                    if (artikel.menge < artikel.Anzahl) {
+                        artikel.menge++;
+                    } else {
+                        alert(`Maximale Anzahl erreicht! Es gibt nur noch ${artikel.Anzahl} Stück.`);
+                    }
+                },
+                mengeVerringern(index) {
+                    if (this.warenkorb[index].menge > 1) {
+                        this.warenkorb[index].menge--;
+                    } else {
+                        this.warenkorb.splice(index, 1);
+                    }
+                },
+                entfernen(index) {
+                    this.warenkorb.splice(index, 1);
+                },
+                // Neue Funktion zum Checkout
+                async startCheckout() {
+                    // 1) Cart-Daten aus Ihrer cart-Variable
+                    const cartItems = this.warenkorb.map(item => ({
+                        name: item.Produktname,
+                        price: item.Preis,  
+                        cartQuantity: item.menge
+                    }));
+
+                    try {
+                        // 2) POST an Ihr PHP-Skript /checkout.php, um Session zu erzeugen
+                        const response = await fetch("checkout.php", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(cartItems)
+                        });
+                        const data = await response.json();
+                        console.log("Data", data);
+
+                        if (data.error) {
+                            console.error("Stripe-Fehler:", data.error);
+                            alert("Fehler beim Erstellen der Stripe-Session: " + data.error);
+                            return;
+                        }
+
+                        // 3) Session-ID holen
+                        const sessionId = data.id;
+
+                        // 4) Stripe-Objekt initialisieren
+                        const stripe = Stripe("pk_testXXXX");
+
+                        // 5) Weiterleitung zum Stripe Checkout
+                        const { error } = await stripe.redirectToCheckout({ sessionId });
+                        if (error) {
+                            console.error("Checkout Error:", error);
+                            alert("Fehler beim Weiterleiten zu Stripe Checkout.");
+                        }
+                    } catch (err) {
+                        console.error("Request-Fehler:", err);
+                        alert("Fehler bei der Kommunikation mit dem Server.");
+                    }
+                }
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+</html>
